@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block content %}
+<form method="post" id="saleForm" autocomplete="off">{% csrf_token %}
+<div class="row g-3">
+  <div class="col-xl-8">
+    <div class="card mb-3"><div class="card-body">
+      <label class="form-label" for="scan"><i class="bi bi-upc-scan me-1"></i>Scan barcode or type SKU, then press Enter</label>
+      <div class="input-group">
+        <input id="scan" class="form-control scan-input" placeholder="e.g. 6010000000000 or BEV-001" autofocus>
+        <select id="picker" class="form-select" style="max-width:340px" aria-label="Or choose a product">
+          <option value="">…or choose a product</option>
+          {% for p in products %}<option value="{{ p.pk }}" data-name="{{ p.name }}" data-price="{{ p.selling_price }}" data-stock="{{ p.stock_on_hand }}" data-unit="{{ p.unit }}" data-codes="{{ p.barcode }} {{ p.sku }}">{{ p.name }} — {{ p.stock_on_hand|qty }} {{ p.unit }} in stock</option>{% endfor %}
+        </select>
+      </div>
+      <div id="scanMsg" class="form-text"></div>
+    </div></div>
+
+    <div class="card">
+      <div class="table-responsive"><table class="table align-middle" id="lines">
+        <thead><tr><th>Product</th><th class="num" style="width:120px">Qty</th><th class="num" style="width:150px">Unit price</th><th class="num">Line total</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+      <div id="emptyLines" class="empty"><i class="bi bi-basket"></i>Scan or choose products to start the sale.</div>
+    </div>
+  </div>
+  <div class="col-xl-4">
+    <div class="card position-sticky" style="top:80px"><div class="card-body">
+      <div class="text-muted small">Total due</div>
+      <div class="pos-total" id="total">{{ current_business.currency }} 0</div>
+      <div class="text-muted small mb-3"><span id="count">0</span> item(s)</div>
+      <label class="form-label">Payment method</label>
+      <div class="btn-group w-100 mb-3 flex-wrap" role="group">
+        {% for key, label in payment_methods %}
+        <input type="radio" class="btn-check" name="payment_method" id="pm_{{ key }}" value="{{ key }}" {% if forloop.first %}checked{% endif %}>
+        <label class="btn btn-light" for="pm_{{ key }}">{{ label }}</label>
+        {% endfor %}
+      </div>
+      <label class="form-label" for="customer_name">Customer (optional)</label>
+      <input class="form-control mb-3" name="customer_name" id="customer_name" maxlength="120">
+      <label class="form-label" for="notes">Notes</label>
+      <input class="form-control mb-4" name="notes" id="notes" maxlength="255">
+      <button class="btn btn-primary w-100 py-2" id="submitSale" disabled><i class="bi bi-check2-circle me-1"></i>Complete sale</button>
+    </div></div>
+  </div>
+</div>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const picker = document.getElementById("picker"), scan = document.getElementById("scan");
+  const tbody = document.querySelector("#lines tbody"), msg = document.getElementById("scanMsg");
+  const products = Array.from(picker.options).filter((o) => o.value);
+
+  function findByCode(code) {
+    code = code.toLowerCase();
+    return products.find((o) => o.dataset.codes.toLowerCase().split(" ").includes(code));
+  }
+  function addProduct(opt) {
+    const existing = tbody.querySelector(`tr[data-id="${opt.value}"]`);
+    if (existing) { const q = existing.querySelector(".qty"); q.value = (parseFloat(q.value) || 0) + 1; recalc(); flash(existing); return; }
+    const tr = document.createElement("tr");
+    tr.dataset.id = opt.value;
+    tr.innerHTML = `
+      <td><input type="hidden" name="product" value="${opt.value}"><span class="fw-semibold"></span>
+          <div class="small text-muted">${opt.dataset.stock} ${opt.dataset.unit} in stock</div></td>
+      <td><input type="number" class="form-control form-control-sm text-end qty" name="quantity" value="1" min="0.001" step="any" required></td>
+      <td><input type="number" class="form-control form-control-sm text-end price" name="unit_price" value="${opt.dataset.price}" min="0" step="any"></td>
+      <td class="num line">0</td>
+      <td class="text-end"><button type="button" class="btn btn-sm btn-light remove" aria-label="Remove"><i class="bi bi-x"></i></button></td>`;
+    tr.querySelector(".fw-semibold").textContent = opt.dataset.name;
+    tbody.appendChild(tr);
+    recalc(); flash(tr);
+  }
+  function flash(tr) { tr.classList.add("table-success"); setTimeout(() => tr.classList.remove("table-success"), 500); }
+  function recalc() {
+    let total = 0, count = 0;
+    tbody.querySelectorAll("tr").forEach((tr) => {
+      const q = parseFloat(tr.querySelector(".qty").value) || 0, p = parseFloat(tr.querySelector(".price").value) || 0;
+      tr.querySelector(".line").textContent = SIS.fmtNumber(q * p);
+      total += q * p; count += q;
+    });
+    document.getElementById("total").textContent = SIS.fmtMoney(total);
+    document.getElementById("count").textContent = SIS.fmtNumber(count, 3);
+    document.getElementById("emptyLines").style.display = tbody.children.length ? "none" : "";
+    document.getElementById("submitSale").disabled = !tbody.children.length;
+  }
+  scan.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const code = scan.value.trim(); if (!code) return;
+    const opt = findByCode(code);
+    if (opt) { addProduct(opt); msg.textContent = ""; msg.className = "form-text"; }
+    else { msg.textContent = `No product with code “${code}”.`; msg.className = "form-text text-danger"; }
+    scan.value = "";
+  });
+  picker.addEventListener("change", () => { const opt = picker.selectedOptions[0]; if (opt && opt.value) addProduct(opt); picker.value = ""; scan.focus(); });
+  tbody.addEventListener("input", recalc);
+  tbody.addEventListener("click", (e) => { if (e.target.closest(".remove")) { e.target.closest("tr").remove(); recalc(); } });
+  recalc();
+})();
+</script>
+{% endblock %}

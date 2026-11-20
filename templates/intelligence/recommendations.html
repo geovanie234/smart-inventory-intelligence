@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+{% with cur=current_business.currency %}
+<div class="d-flex flex-wrap gap-2 mb-3">
+  {% for key, label in statuses %}<a href="?status={{ key }}" class="btn btn-sm {% if status == key %}btn-primary{% else %}btn-light{% endif %}">{{ label }}</a>{% endfor %}
+</div>
+<form method="post" action="{% url 'intelligence:recommendation_action' %}">{% csrf_token %}
+<div class="card">
+  <div class="card-header">
+    <div><h2>{{ recommendations|length }} recommendation{{ recommendations|length|pluralize }}</h2><div class="card-sub">Estimated cost {{ total_cost|money:cur }} · periodic review every {{ current_business.review_period_days }} days</div></div>
+    {% if status == 'pending' and recommendations and request.user.role != 'clerk' %}
+    <div class="d-flex gap-2">
+      <button name="action" value="dismiss" class="btn btn-light btn-sm">Dismiss selected</button>
+      <button name="action" value="order" class="btn btn-primary btn-sm"><i class="bi bi-file-earmark-plus me-1"></i>Create draft POs</button>
+    </div>
+    {% endif %}
+  </div>
+  <div class="table-responsive"><table class="table align-middle">
+    <thead><tr>
+      {% if status == 'pending' %}<th style="width:32px"><input type="checkbox" class="form-check-input" data-select-all=".rec-check" aria-label="Select all"></th>{% endif %}
+      <th>Product</th><th>Status</th><th class="num">On hand</th><th class="num">On order</th><th class="num">Demand / day</th><th class="num">Cover</th><th class="num" style="width:130px">Order qty</th><th class="num">Est. cost</th><th>Supplier</th><th></th></tr></thead>
+    <tbody>
+    {% for r in recommendations %}
+      <tr>
+        {% if status == 'pending' %}<td><input type="checkbox" class="form-check-input rec-check" name="selected" value="{{ r.pk }}" aria-label="Select {{ r.product.name }}"></td>{% endif %}
+        <td><a href="{{ r.product.get_absolute_url }}" class="fw-semibold">{{ r.product.name }}</a><div class="small text-muted">{{ r.created_at|naturaltime }}</div></td>
+        <td><span class="risk risk-{{ r.risk_level }}">{{ r.get_risk_level_display }}</span></td>
+        <td class="num">{{ r.current_stock|qty }}</td><td class="num">{{ r.on_order|qty }}</td><td class="num">{{ r.avg_daily_demand|qty:1 }}</td><td class="num">{{ r.days_of_cover|num }} d</td>
+        <td class="num">{% if status == 'pending' %}<input type="number" step="any" min="0" class="form-control form-control-sm text-end" name="qty_{{ r.pk }}" value="{{ r.recommended_quantity|floatformat:'-3' }}" aria-label="Order quantity">{% else %}{{ r.recommended_quantity|qty }}{% endif %}</td>
+        <td class="num">{{ r.estimated_cost|money:cur }}</td>
+        <td class="small">{{ r.supplier|default:"<span class='text-danger'>Not set</span>" }}</td>
+        <td><button type="button" class="btn btn-sm btn-light" data-bs-toggle="collapse" data-bs-target="#why{{ r.pk }}" aria-expanded="false">Why?</button></td>
+      </tr>
+      <tr class="collapse" id="why{{ r.pk }}"><td colspan="11" class="bg-body-tertiary">
+        <ol class="explain mb-1">{% for step in r.explanation %}<li>{{ step }}</li>{% endfor %}</ol>
+        <div class="small text-muted ps-1">Lead time {{ r.lead_time_days }} days · review period {{ r.review_period_days }} days · safety stock {{ r.safety_stock_method }}. Adjust the quantity for budget, promotions or shelf space before ordering — a manager approves every purchase order.</div>
+      </td></tr>
+    {% empty %}
+      <tr><td colspan="11"><div class="empty"><i class="bi bi-cart-check"></i>No {{ status }} recommendations.</div></td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+</form>
+{% endwith %}
+{% endblock %}

@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block breadcrumbs %}<div class="small"><a href="{% url 'inventory:product_list' %}">Products</a> /</div>{% endblock %}
+{% block page_title %}{{ product.name }} <span class="risk risk-{{ product.stock_risk }} align-middle ms-2" style="font-size:.8rem">{{ product.get_stock_risk_display }}</span>{% endblock %}
+{% block actions %}
+  <a class="btn btn-light" href="{% url 'inventory:adjust' %}?product={{ product.pk }}"><i class="bi bi-sliders me-1"></i>Adjust</a>
+  {% if request.user.is_manager or request.user.role == 'purchasing' %}<a class="btn btn-primary" href="{% url 'inventory:product_update' product.pk %}"><i class="bi bi-pencil me-1"></i>Edit</a>{% endif %}
+{% endblock %}
+{% block content %}
+{% with cur=current_business.currency unit=product.get_unit_display|lower %}
+<div class="row g-3 mb-3">
+  <div class="col-6 col-xl-3"><div class="card kpi"><div class="kpi-label">On hand</div><div class="kpi-value">{{ product.stock_on_hand|qty }}</div><div class="kpi-foot">{{ unit }} · value {{ product.stock_value|money:cur }}</div></div></div>
+  <div class="col-6 col-xl-3"><div class="card kpi"><div class="kpi-label">Forecast demand</div><div class="kpi-value">{{ product.forecast_daily_demand|qty:1 }}<span class="fs-6 text-muted"> /day</span></div><div class="kpi-foot">{{ forecast_model|default:"No forecast yet" }}</div></div></div>
+  <div class="col-6 col-xl-3"><div class="card kpi"><div class="kpi-label">Days of cover</div><div class="kpi-value">{{ product.days_of_cover|num }}</div><div class="kpi-foot">Lead time {{ product.effective_lead_time }} day{{ product.effective_lead_time|pluralize }} · review every {{ current_business.review_period_days }} days</div></div></div>
+  <div class="col-6 col-xl-3"><div class="card kpi"><div class="kpi-label">Sold · last 30 days</div><div class="kpi-value">{{ sold_30d|num:0 }}</div><div class="kpi-foot">Margin {{ product.margin_pct|pct }} · price {{ product.selling_price|money:cur }}</div></div></div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-xl-8">
+    <div class="card h-100">
+      <div class="card-header">
+        <div><h2>Daily sales and demand forecast</h2><div class="card-sub">Last 90 days and forecast horizon</div></div>
+        <div class="legend"><span><span class="swatch" style="background:var(--series-1)"></span>Units sold</span><span><span class="swatch" style="background:var(--series-2)"></span>Forecast</span><span><span class="swatch band" style="background:var(--series-2)"></span>80% interval</span></div>
+      </div>
+      <div class="card-body"><div class="chart-wrap"><canvas id="productChart" aria-label="Daily sales and forecast for {{ product.name }}"></canvas></div></div>
+    </div>
+  </div>
+  <div class="col-xl-4">
+    <div class="card h-100">
+      <div class="card-header"><h2>Reorder recommendation</h2>{% if recommendation %}<span class="badge text-bg-light border">{{ recommendation.get_status_display }}</span>{% endif %}</div>
+      <div class="card-body">
+        {% if recommendation %}
+          <div class="d-flex align-items-baseline gap-2 mb-2"><span class="pos-total">{{ recommendation.recommended_quantity|qty }}</span><span class="text-muted">{{ unit }} · ≈ {{ recommendation.estimated_cost|money:cur }}</span></div>
+          <ol class="explain mb-3">{% for step in recommendation.explanation %}<li>{{ step }}</li>{% endfor %}</ol>
+          <div class="small text-muted">Supplier: {{ recommendation.supplier|default:"not set" }} · generated {{ recommendation.created_at|naturaltime }}</div>
+          {% if recommendation.status == 'pending' %}<a class="btn btn-primary btn-sm mt-3" href="{% url 'intelligence:recommendations' %}">Review &amp; order</a>{% endif %}
+        {% else %}
+          <div class="empty py-3"><i class="bi bi-check2-circle"></i>No order needed right now.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-xl-8">
+    <div class="card mb-3">
+      <div class="card-header"><h2>Recent stock movements</h2><a class="small" href="{% url 'inventory:ledger' %}?product={{ product.pk }}">Full ledger →</a></div>
+      <div class="table-responsive"><table class="table table-hover">
+        <thead><tr><th>When</th><th>Type</th><th class="num">Qty</th><th class="num">Balance</th><th>Reference</th><th>By</th></tr></thead>
+        <tbody>
+        {% for t in transactions %}
+          <tr><td>{{ t.occurred_at|date:"d M Y, H:i" }}</td><td>{{ t.get_txn_type_display }}</td>
+            <td class="num {% if t.quantity > 0 %}delta-up{% else %}delta-down{% endif %}">{% if t.quantity > 0 %}+{% endif %}{{ t.quantity|qty }}</td>
+            <td class="num">{{ t.balance_after|qty }}</td><td class="mono small">{{ t.reference }}</td><td class="small">{{ t.created_by|default:"" }}</td></tr>
+        {% empty %}<tr><td colspan="6"><div class="empty">No movements recorded.</div></td></tr>{% endfor %}
+        </tbody></table></div>
+    </div>
+    {% if evaluations %}
+    <div class="card">
+      <div class="card-header"><div><h2>Model comparison for this product</h2><div class="card-sub">Time-based holdout · lower is better</div></div></div>
+      <div class="table-responsive"><table class="table">
+        <thead><tr><th>Model</th><th class="num">MAE (units/day)</th><th class="num">WAPE</th><th class="num">Bias</th><th></th></tr></thead>
+        <tbody>{% for e in evaluations %}<tr><td>{{ e.model_name }}{% if e.is_baseline %} <span class="badge text-bg-light border">baseline</span>{% endif %}</td><td class="num">{{ e.mae|num:2 }}</td><td class="num">{{ e.wape|pct }}</td><td class="num">{{ e.bias|num:2 }}</td><td>{% if e.is_selected %}<span class="risk risk-ok">Selected</span>{% endif %}</td></tr>{% endfor %}</tbody>
+      </table></div>
+    </div>
+    {% endif %}
+  </div>
+  <div class="col-xl-4">
+    {% if alerts %}
+    <div class="card mb-3"><div class="card-header"><h2>Open alerts</h2></div>
+      {% for a in alerts %}<div class="alert-item"><div class="alert-icon sev-{{ a.severity }}"><i class="bi {{ a.icon }}"></i></div><div><div class="alert-title">{{ a.title }}</div><div class="small text-muted">{{ a.message }}</div></div></div>{% endfor %}
+    </div>
+    {% endif %}
+    <div class="card mb-3"><div class="card-header"><h2>Details</h2></div>
+      <div class="card-body small">
+        <dl class="row mb-0">
+          <dt class="col-6 text-muted fw-normal">SKU</dt><dd class="col-6 mono">{{ product.sku }}</dd>
+          <dt class="col-6 text-muted fw-normal">Barcode</dt><dd class="col-6 mono">{{ product.barcode|default:"—" }}</dd>
+          <dt class="col-6 text-muted fw-normal">Category</dt><dd class="col-6">{{ product.category|default:"—" }}</dd>
+          <dt class="col-6 text-muted fw-normal">Supplier</dt><dd class="col-6">{% if product.preferred_supplier %}<a href="{{ product.preferred_supplier.get_absolute_url }}">{{ product.preferred_supplier }}</a>{% else %}—{% endif %}</dd>
+          <dt class="col-6 text-muted fw-normal">Cost / price</dt><dd class="col-6">{{ product.cost_price|money:cur }} / {{ product.selling_price|money:cur }}</dd>
+          <dt class="col-6 text-muted fw-normal">Safety stock</dt><dd class="col-6">{% if product.safety_stock is not None %}{{ product.safety_stock|qty }}{% else %}Computed{% endif %}</dd>
+          <dt class="col-6 text-muted fw-normal">Pack size / MOQ</dt><dd class="col-6">{{ product.pack_size|qty }} / {{ product.min_order_qty|qty }}</dd>
+          <dt class="col-6 text-muted fw-normal">Tracks expiry</dt><dd class="col-6">{{ product.track_expiry|yesno:"Yes,No" }}</dd>
+        </dl>
+      </div>
+    </div>
+    {% if batches %}
+    <div class="card mb-3"><div class="card-header"><h2>Batches in stock</h2></div>
+      <table class="table"><tbody>{% for b in batches %}<tr><td class="small">{{ b.batch_number|default:"—" }}</td><td class="small">exp {{ b.expiry_date|date:"d M Y" }}</td><td class="num">{{ b.quantity_remaining|qty }}</td></tr>{% endfor %}</tbody></table>
+    </div>
+    {% endif %}
+    {% if counts %}
+    <div class="card"><div class="card-header"><h2>Recent counts</h2></div>
+      <table class="table"><tbody>{% for c in counts %}<tr><td class="small">{{ c.counted_at|date:"d M Y" }}</td><td class="num small">{{ c.counted_quantity|qty }}</td><td class="num small {% if c.variance < 0 %}delta-down{% elif c.variance > 0 %}delta-up{% endif %}">{% if c.variance > 0 %}+{% endif %}{{ c.variance|qty }}</td></tr>{% endfor %}</tbody></table>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endwith %}
+{% endblock %}
+{% block scripts %}
+{% include "common/chartjs.html" %}
+{{ chart_data|json_script:"chart-data" }}
+<script>
+  SIS.historyForecastChart(document.getElementById("productChart"), JSON.parse(document.getElementById("chart-data").textContent),
+    { historyLabel: "Units sold", unit: "{{ product.unit }}" });
+</script>
+{% endblock %}

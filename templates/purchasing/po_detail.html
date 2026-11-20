@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block breadcrumbs %}<div class="small"><a href="{% url 'purchasing:po_list' %}">Purchase orders</a> /</div>{% endblock %}
+{% block page_title %}{{ order.reference }} <span class="badge text-bg-{{ order.status_badge }} align-middle ms-2" style="font-size:.75rem">{{ order.get_status_display }}</span>{% endblock %}
+{% block actions %}
+  <button class="btn btn-light" onclick="window.print()"><i class="bi bi-printer me-1"></i>Print</button>
+  {% if order.status == 'draft' and request.user.role != 'clerk' %}
+    <form method="post" action="{% url 'purchasing:po_action' order.pk 'submit' %}">{% csrf_token %}<button class="btn btn-light"><i class="bi bi-send me-1"></i>Submit for approval</button></form>
+  {% endif %}
+  {% if order.is_editable and request.user.is_manager %}
+    <form method="post" action="{% url 'purchasing:po_action' order.pk 'approve' %}" data-confirm="Approve {{ order.reference }} for {{ order.total_cost|money:current_business.currency }}?">{% csrf_token %}<button class="btn btn-primary"><i class="bi bi-check2-circle me-1"></i>Approve &amp; order</button></form>
+  {% endif %}
+  {% if order.is_receivable %}<a class="btn btn-primary" href="{% url 'purchasing:po_receive' order.pk %}"><i class="bi bi-box-arrow-in-down me-1"></i>Receive goods</a>{% endif %}
+  {% if order.is_editable or order.status == 'approved' %}
+    {% if request.user.role != 'clerk' %}<form method="post" action="{% url 'purchasing:po_action' order.pk 'cancel' %}" data-confirm="Cancel this purchase order?">{% csrf_token %}<button class="btn btn-outline-danger">Cancel</button></form>{% endif %}
+  {% endif %}
+{% endblock %}
+{% block content %}
+{% with cur=current_business.currency %}
+{% if order.status == 'submitted' and not request.user.is_manager %}<div class="alert alert-warning py-2"><i class="bi bi-hourglass-split me-1"></i>Waiting for a manager to approve this order.</div>{% endif %}
+<div class="row g-3">
+  <div class="col-xl-8">
+    <div class="card"><div class="table-responsive"><table class="table">
+      <thead><tr><th>Product</th><th class="num">Ordered</th><th class="num">Received</th><th class="num">Unit cost</th><th class="num">Line total</th></tr></thead>
+      <tbody>{% for i in items %}<tr><td><a href="{{ i.product.get_absolute_url }}">{{ i.product.name }}</a><div class="small text-muted mono">{{ i.product.sku }}</div></td>
+        <td class="num">{{ i.quantity_ordered|qty }}</td><td class="num">{{ i.quantity_received|qty }}{% if i.outstanding and order.is_receivable %}<div class="small text-muted">{{ i.outstanding|qty }} outstanding</div>{% endif %}</td>
+        <td class="num">{{ i.unit_cost|money:cur }}</td><td class="num">{{ i.line_total|money:cur }}</td></tr>{% endfor %}</tbody>
+      <tfoot><tr><th colspan="4" class="num">Order total</th><th class="num fs-6">{{ order.total_cost|money:cur }}</th></tr></tfoot>
+    </table></div></div>
+  </div>
+  <div class="col-xl-4">
+    <div class="card"><div class="card-header"><h2>Order details</h2></div><div class="card-body small">
+      <dl class="row mb-0">
+        <dt class="col-5 text-muted fw-normal">Supplier</dt><dd class="col-7"><a href="{{ order.supplier.get_absolute_url }}">{{ order.supplier }}</a><div class="text-muted">{{ order.supplier.phone }}</div></dd>
+        <dt class="col-5 text-muted fw-normal">Created</dt><dd class="col-7">{{ order.created_at|date:"d M Y, H:i" }} by {{ order.created_by|default:"—" }}</dd>
+        <dt class="col-5 text-muted fw-normal">Submitted</dt><dd class="col-7">{{ order.submitted_at|date:"d M Y, H:i"|default:"—" }}</dd>
+        <dt class="col-5 text-muted fw-normal">Approved</dt><dd class="col-7">{% if order.approved_at %}{{ order.approved_at|date:"d M Y, H:i" }} by {{ order.approved_by }}{% else %}—{% endif %}</dd>
+        <dt class="col-5 text-muted fw-normal">Expected</dt><dd class="col-7">{{ order.expected_delivery_date|date:"d M Y"|default:"—" }}</dd>
+        <dt class="col-5 text-muted fw-normal">Received</dt><dd class="col-7">{{ order.first_received_at|date:"d M Y, H:i"|default:"—" }}{% if order.actual_lead_time_days %}<div class="text-muted">lead time {{ order.actual_lead_time_days|num }} days</div>{% endif %}</dd>
+      </dl>
+      {% if order.notes %}<hr><div>{{ order.notes|linebreaksbr }}</div>{% endif %}
+      {% if recommendations %}<hr><div class="text-muted"><i class="bi bi-stars me-1"></i>{{ recommendations }} line(s) generated from AI reorder recommendations.</div>{% endif %}
+    </div></div>
+  </div>
+</div>
+{% endwith %}
+{% endblock %}

@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block actions %}{% if request.user.is_manager or request.user.role == 'purchasing' %}<a class="btn btn-primary" href="{% url 'purchasing:po_create' %}"><i class="bi bi-plus-lg me-1"></i>New order</a>{% endif %}{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap gap-2 mb-3">
+  <a href="?" class="btn btn-sm {% if not request.GET.status %}btn-primary{% else %}btn-light{% endif %}">All</a>
+  {% for key, label in statuses %}<a href="?status={{ key }}" class="btn btn-sm {% if request.GET.status == key %}btn-primary{% else %}btn-light{% endif %}">{{ label }} <span class="text-muted ms-1">{{ status_counts|get_item:key|default:0 }}</span></a>{% endfor %}
+</div>
+<div class="card"><div class="table-responsive"><table class="table table-hover">
+  <thead><tr><th>Reference</th><th>Supplier</th><th>Status</th><th class="num">Lines</th><th>Created</th><th>Approved by</th><th>Expected</th></tr></thead>
+  <tbody>
+  {% for o in orders %}
+    <tr><td><a class="mono fw-semibold" href="{{ o.get_absolute_url }}">{{ o.reference }}</a></td><td>{{ o.supplier }}</td><td><span class="badge text-bg-{{ o.status_badge }}">{{ o.get_status_display }}</span></td>
+      <td class="num">{{ o.n_items }}</td><td>{{ o.created_at|date:"d M Y" }}<div class="small text-muted">{{ o.created_by|default:"" }}</div></td><td>{{ o.approved_by|default:"—" }}</td><td>{{ o.expected_delivery_date|date:"d M Y"|default:"—" }}</td></tr>
+  {% empty %}<tr><td colspan="7"><div class="empty"><i class="bi bi-truck"></i>No purchase orders. Create one from the <a href="{% url 'intelligence:recommendations' %}">reorder recommendations</a>.</div></td></tr>{% endfor %}
+  </tbody></table></div>
+  {% include "common/pagination.html" %}
+</div>
+{% endblock %}

@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block actions %}
+  <a class="btn btn-light" href="{% querystring export='csv' page=None %}"><i class="bi bi-download me-1"></i>Export CSV</a>
+  {% if request.user.is_manager or request.user.role == 'purchasing' %}<a class="btn btn-primary" href="{% url 'inventory:product_create' %}"><i class="bi bi-plus-lg me-1"></i>New product</a>{% endif %}
+{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap gap-2 mb-3">
+  <a href="?" class="btn btn-sm {% if not request.GET.risk %}btn-primary{% else %}btn-light{% endif %}">All</a>
+  {% for key, label in filter_form.fields.risk.choices %}{% if key %}
+  <a href="?risk={{ key }}" class="btn btn-sm {% if request.GET.risk == key %}btn-primary{% else %}btn-light{% endif %}">{{ label }} <span class="text-muted ms-1">{{ risk_counts|get_item:key|default:0 }}</span></a>
+  {% endif %}{% endfor %}
+</div>
+<div class="card">
+  <div class="card-header">
+    <form class="filter-bar" method="get">
+      {{ filter_form.q }}{{ filter_form.category }}{{ filter_form.risk }}
+      <button class="btn btn-light"><i class="bi bi-funnel"></i> Filter</button>
+    </form>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover">
+      <thead><tr><th>Product</th><th>Category</th><th class="num">On hand</th><th class="num">Forecast / day</th><th class="num">Days of cover</th><th>Status</th><th class="num">Price</th><th class="num">Stock value</th></tr></thead>
+      <tbody>
+      {% for p in products %}
+        <tr>
+          <td><a href="{{ p.get_absolute_url }}" class="fw-semibold">{{ p.name }}</a><div class="small text-muted mono">{{ p.sku }}{% if p.barcode %} · {{ p.barcode }}{% endif %}</div></td>
+          <td>{{ p.category|default:"—" }}</td>
+          <td class="num">{{ p.stock_on_hand|qty }} <span class="text-muted small">{{ p.unit }}</span></td>
+          <td class="num">{{ p.forecast_daily_demand|qty:1 }}</td>
+          <td class="num">{{ p.days_of_cover|num }}</td>
+          <td><span class="risk risk-{{ p.stock_risk }}">{{ p.get_stock_risk_display }}</span></td>
+          <td class="num">{{ p.selling_price|money:current_business.currency }}</td>
+          <td class="num">{{ p.stock_value|money:current_business.currency }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="8"><div class="empty"><i class="bi bi-box-seam"></i>No products match. {% if request.user.is_manager %}<a href="{% url 'inventory:product_create' %}">Add your first product</a>.{% endif %}</div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% include "common/pagination.html" %}
+</div>
+{% endblock %}

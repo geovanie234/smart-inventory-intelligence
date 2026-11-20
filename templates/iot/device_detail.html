@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block breadcrumbs %}<div class="small"><a href="{% url 'iot:device_list' %}">IoT devices</a> /</div>{% endblock %}
+{% block actions %}
+{% if request.user.is_manager %}
+  <form method="post" action="{% url 'iot:device_rotate_key' device.pk %}" data-confirm="Generate a new key? The current key will stop working immediately.">{% csrf_token %}<button class="btn btn-light"><i class="bi bi-key me-1"></i>Rotate key</button></form>
+  <a class="btn btn-primary" href="{% url 'iot:device_update' device.pk %}"><i class="bi bi-pencil me-1"></i>Edit</a>
+{% endif %}
+{% endblock %}
+{% block content %}
+{% if new_key %}
+<div class="alert alert-warning">
+  <div class="fw-semibold mb-1"><i class="bi bi-key me-1"></i>Device key — copy it now, it will not be shown again</div>
+  <code class="d-block p-2 bg-body rounded user-select-all">{{ new_key }}</code>
+  <div class="small mt-2">Flash it into the device firmware together with device id <code>{{ device.device_id }}</code>. Only a hash is stored on the server.</div>
+</div>
+{% endif %}
+<div class="row g-3 mb-3">
+  <div class="col-6 col-xl-3"><div class="card kpi"><div class="kpi-label">Connection</div><div class="kpi-value fs-4">{% if device.is_online %}<span class="risk risk-ok">Online</span>{% else %}<span class="risk risk-out">Offline</span>{% endif %}</div><div class="kpi-foot">Last seen {{ device.last_seen_at|naturaltime|default:"never" }}</div></div></div>
+  <div class="col-6 col-xl-3"><div class="card kpi"><div class="kpi-label">Monitors</div><div class="kpi-value fs-5">{% if device.product %}<a href="{{ device.product.get_absolute_url }}">{{ device.product.name }}</a>{% else %}—{% endif %}</div><div class="kpi-foot">{{ device.location }}</div></div></div>
+  <div class="col-6 col-xl-3"><div class="card kpi"><div class="kpi-label">Calibration</div><div class="kpi-value fs-5">{{ device.unit_weight_grams|qty|default:"—" }} g/unit</div><div class="kpi-foot">Tare {{ device.tare_grams|qty }} g · tolerance ±{{ device.tolerance_pct|qty }}%</div></div></div>
+  <div class="col-6 col-xl-3"><div class="card kpi"><div class="kpi-label">Key</div><div class="kpi-value fs-6 mono">{{ device.key_prefix }}…</div><div class="kpi-foot">Firmware {{ device.firmware_version|default:"unknown" }}</div></div></div>
+</div>
+{% if chart %}
+<div class="card mb-3">
+  <div class="card-header"><div><h2>Sensor estimate vs ledger</h2><div class="card-sub">Units · recent readings</div></div>
+    <div class="legend"><span><span class="swatch" style="background:var(--series-1)"></span>Sensor estimate</span><span><span class="swatch" style="background:var(--series-3)"></span>Ledger stock</span></div></div>
+  <div class="card-body"><div class="chart-wrap sm"><canvas id="sensorChart" aria-label="Sensor estimate compared with ledger stock"></canvas></div></div>
+</div>
+{% endif %}
+<div class="card mb-3"><div class="card-header"><h2>Readings</h2></div>
+  <div class="table-responsive"><table class="table table-hover align-middle">
+    <thead><tr><th>Measured</th><th>Channel</th><th class="num">Raw</th><th class="num">Estimated</th><th class="num">Ledger</th><th class="num">Difference</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for r in readings %}
+      <tr><td>{{ r.measured_at|date:"d M Y, H:i" }}</td><td>{{ r.get_channel_display }}</td><td class="num">{{ r.raw_value|qty:1 }}</td><td class="num">{{ r.estimated_quantity|qty:2 }}</td><td class="num">{{ r.recorded_quantity|qty }}</td>
+        <td class="num {% if r.status == 'discrepancy' %}delta-down fw-semibold{% endif %}">{{ r.discrepancy|qty:2 }}</td>
+        <td><span class="badge text-bg-{{ r.status_badge }}">{{ r.get_status_display }}</span>{% if r.note %}<div class="small text-muted">{{ r.note }}</div>{% endif %}</td>
+        <td class="text-end">{% if r.status == 'discrepancy' %}
+          <form method="post" action="{% url 'iot:reading_action' r.pk %}" class="d-inline" data-confirm="Set recorded stock to {{ r.estimated_quantity|qty:2 }} based on this reading? This posts a stock count correction.">{% csrf_token %}<button name="action" value="verify" class="btn btn-sm btn-primary">Verify &amp; correct</button></form>
+          <form method="post" action="{% url 'iot:reading_action' r.pk %}" class="d-inline">{% csrf_token %}<button name="action" value="dismiss" class="btn btn-sm btn-light">Dismiss</button></form>
+        {% endif %}</td></tr>
+    {% empty %}<tr><td colspan="8"><div class="empty"><i class="bi bi-broadcast"></i>No readings received yet.</div></td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+<div class="card"><div class="card-header"><h2>Integration</h2></div><div class="card-body small">
+  <p class="mb-2"><strong>HTTPS</strong></p>
+<pre class="p-3 rounded bg-body-tertiary mb-3"><code>POST {{ api_url }}
+X-Device-Id: {{ device.device_id }}
+Authorization: Device &lt;device key&gt;
+Content-Type: application/json
+
+{"message_id": "boot42-0017", "measured_at": "2026-11-20T09:30:00+02:00", "weight_g": 14250.5, "firmware": "1.2.0"}</code></pre>
+  <p class="mb-2"><strong>MQTT</strong> — publish to <code>sis/{{ device.device_id }}/readings</code> (QoS 1) with the same JSON plus <code>"key"</code>; acknowledgements arrive on <code>sis/{{ device.device_id }}/ack</code>. Firmware: <code>iot/firmware/esp32_load_cell/</code>.</p>
+</div></div>
+{% endblock %}
+{% block scripts %}
+{% if chart %}
+{% include "common/chartjs.html" %}
+{{ chart|json_script:"sensor-data" }}
+<script>SIS.sensorChart(document.getElementById("sensorChart"), JSON.parse(document.getElementById("sensor-data").textContent));</script>
+{% endif %}
+{% endblock %}

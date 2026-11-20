@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block actions %}{% if request.user.is_manager %}<a class="btn btn-primary" href="{% url 'iot:device_create' %}"><i class="bi bi-plus-lg me-1"></i>Register device</a>{% endif %}{% endblock %}
+{% block content %}
+<div class="row g-3">
+  <div class="col-xl-7">
+    <div class="card"><div class="table-responsive"><table class="table table-hover">
+      <thead><tr><th>Device</th><th>Type</th><th>Monitors</th><th>Connection</th><th>Last seen</th></tr></thead>
+      <tbody>
+      {% for d in devices %}
+        <tr><td><a class="fw-semibold" href="{{ d.get_absolute_url }}">{{ d.name }}</a><div class="small text-muted mono">{{ d.device_id }}</div></td>
+          <td class="small">{{ d.get_device_type_display }}</td><td>{{ d.product|default:"—" }}<div class="small text-muted">{{ d.location }}</div></td>
+          <td>{% if not d.is_active %}<span class="risk risk-unknown">Disabled</span>{% elif d.is_online %}<span class="risk risk-ok">Online</span>{% else %}<span class="risk risk-out">Offline</span>{% endif %}</td>
+          <td class="small">{{ d.last_seen_at|naturaltime|default:"Never" }}</td></tr>
+      {% empty %}<tr><td colspan="5"><div class="empty"><i class="bi bi-cpu"></i>No devices registered.</div></td></tr>{% endfor %}
+      </tbody></table></div></div>
+    <div class="card mt-3"><div class="card-header"><h2>Data flow</h2></div><div class="card-body small text-muted">
+      <ol class="explain">
+        <li>An ESP32 with a load cell (or a scanner gateway) measures the shelf/bin.</li>
+        <li>It sends the reading over HTTPS (<code>POST /api/v1/iot/readings/</code>) or MQTT (<code>sis/&lt;device_id&gt;/readings</code>) with its device key and a unique message id.</li>
+        <li>The server validates the device, the timestamp and the value, and drops duplicate deliveries.</li>
+        <li>Weight is converted to units using calibration and compared with the stock ledger.</li>
+        <li>Differences beyond tolerance raise an alert. Stock is <strong>never</strong> changed automatically: staff verify the reading, which posts an auditable count correction.</li>
+      </ol>
+    </div></div>
+  </div>
+  <div class="col-xl-5">
+    <div class="card"><div class="card-header"><h2>Latest readings</h2></div>
+      <div class="table-responsive"><table class="table"><tbody>
+      {% for r in recent %}<tr><td><div class="small fw-semibold">{{ r.device.name }}</div><div class="small text-muted">{{ r.measured_at|date:"d M, H:i" }} · {{ r.get_channel_display }}</div></td>
+        <td class="num small">{% if r.estimated_quantity is not None %}{{ r.estimated_quantity|qty:1 }} vs {{ r.recorded_quantity|qty:1 }}{% else %}{{ r.product|default:"—" }}{% endif %}</td>
+        <td><span class="badge text-bg-{{ r.status_badge }}">{{ r.get_status_display }}</span></td></tr>
+      {% empty %}<tr><td><div class="empty">No readings yet.</div></td></tr>{% endfor %}
+      </tbody></table></div>
+    </div>
+  </div>
+</div>
+{% endblock %}

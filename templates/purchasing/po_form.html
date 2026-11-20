@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block content %}
+<form method="post" autocomplete="off">{% csrf_token %}
+<div class="row g-3">
+  <div class="col-xl-8">
+    <div class="card">
+      <div class="card-header">
+        <h2>Order lines</h2>
+        <button type="button" class="btn btn-light btn-sm" id="addLine"><i class="bi bi-plus-lg me-1"></i>Add line</button>
+      </div>
+      <div class="table-responsive"><table class="table align-middle" id="lines">
+        <thead><tr><th>Product</th><th style="width:130px" class="num">Quantity</th><th style="width:150px" class="num">Unit cost</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+  </div>
+  <div class="col-xl-4">
+    <div class="card"><div class="card-body">
+      <label class="form-label" for="supplier">Supplier <span class="text-danger">*</span></label>
+      <select class="form-select mb-3" name="supplier" id="supplier" required>
+        <option value="">Choose supplier…</option>
+        {% for s in suppliers %}<option value="{{ s.pk }}" {% if request.GET.supplier == s.pk|stringformat:'s' %}selected{% endif %}>{{ s.name }} ({{ s.lead_time_days }}d lead time)</option>{% endfor %}
+      </select>
+      <label class="form-label" for="expected">Expected delivery</label>
+      <input type="date" class="form-control mb-3" name="expected_delivery_date" id="expected">
+      <div class="form-text mb-3 mt-n2">Defaults to today + supplier lead time when approved.</div>
+      <label class="form-label" for="notes">Notes</label>
+      <textarea class="form-control mb-4" name="notes" id="notes" rows="3"></textarea>
+      <button class="btn btn-primary w-100"><i class="bi bi-save me-1"></i>Save as draft</button>
+    </div></div>
+  </div>
+</div>
+</form>
+<template id="lineTpl">
+  <tr>
+    <td><select name="product" class="form-select form-select-sm" required>
+      <option value="">Choose product…</option>
+      {% for p in products %}<option value="{{ p.pk }}" data-cost="{{ p.cost_price }}" data-supplier="{{ p.preferred_supplier_id|default:'' }}">{{ p.name }} ({{ p.stock_on_hand|qty }} on hand)</option>{% endfor %}
+    </select></td>
+    <td><input type="number" name="quantity" min="0.001" step="any" class="form-control form-control-sm text-end" required></td>
+    <td><input type="number" name="unit_cost" min="0" step="any" class="form-control form-control-sm text-end"></td>
+    <td class="text-end"><button type="button" class="btn btn-sm btn-light remove" aria-label="Remove line"><i class="bi bi-x"></i></button></td>
+  </tr>
+</template>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const tbody = document.querySelector("#lines tbody"), tpl = document.getElementById("lineTpl");
+  function add() { tbody.appendChild(tpl.content.cloneNode(true)); }
+  document.getElementById("addLine").addEventListener("click", add);
+  tbody.addEventListener("change", (e) => {
+    if (e.target.name !== "product") return;
+    const opt = e.target.selectedOptions[0], cost = e.target.closest("tr").querySelector("[name=unit_cost]");
+    if (opt && opt.dataset.cost && !cost.value) cost.value = opt.dataset.cost;
+  });
+  tbody.addEventListener("click", (e) => { if (e.target.closest(".remove")) e.target.closest("tr").remove(); });
+  add(); add(); add();
+})();
+</script>
+{% endblock %}

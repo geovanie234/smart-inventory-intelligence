@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Sign in{% endblock %}
+{% block body %}
+<div class="auth-wrap">
+  <section class="auth-hero">
+    <div class="d-flex align-items-center gap-2">
+      <span class="brand-mark" style="width:38px;height:38px;border-radius:10px;display:grid;place-items:center;background:rgba(255,255,255,.15)"><i class="bi bi-bar-chart-line-fill"></i></span>
+      <strong>Smart Inventory Intelligence System</strong>
+    </div>
+    <div>
+      <h1>From record-keeping<br>to predictive inventory decisions.</h1>
+      <p class="mt-3 opacity-75" style="max-width:460px">Forecast demand, anticipate stockouts, catch unusual stock movements and get explainable reorder quantities — built for retailers and distributors in Kigali.</p>
+      <div class="feature"><i class="bi bi-graph-up-arrow"></i><div><strong>Demand forecasting</strong><br><span class="opacity-75 small">Models compared against a baseline on a time-based holdout.</span></div></div>
+      <div class="feature"><i class="bi bi-cart-check"></i><div><strong>Explainable reorder advice</strong><br><span class="opacity-75 small">Every quantity shows its calculation; a manager approves every order.</span></div></div>
+      <div class="feature"><i class="bi bi-cpu"></i><div><strong>IoT-verified stock</strong><br><span class="opacity-75 small">Sensor readings flag discrepancies for staff to confirm.</span></div></div>
+    </div>
+    <div class="small opacity-50">Kigali, Rwanda</div>
+  </section>
+  <section class="auth-form">
+    <div class="inner">
+      <h2 class="h4 fw-bold mb-1">Sign in</h2>
+      <p class="text-muted mb-4">Use the account provided by your business administrator.</p>
+      {% if form.errors %}<div class="alert alert-danger py-2 small">Incorrect username or password.</div>{% endif %}
+      <form method="post">
+        {% csrf_token %}
+        <div class="mb-3"><label class="form-label" for="id_username">Username</label>{{ form.username }}</div>
+        <div class="mb-4"><label class="form-label" for="id_password">Password</label>{{ form.password }}</div>
+        <input type="hidden" name="next" value="{{ next }}">
+        <button class="btn btn-primary w-100 py-2">Sign in</button>
+      </form>
+      <button class="btn btn-link btn-sm mt-4 px-0 text-muted" data-theme-toggle><i class="bi bi-circle-half me-1"></i>Toggle theme</button>
+    </div>
+  </section>
+</div>
+{% endblock %}

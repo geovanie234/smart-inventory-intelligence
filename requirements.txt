@@ -1,0 +1,17 @@
+# Core web stack
+Django>=5.2,<5.3
+djangorestframework>=3.16,<3.17
+
+# Data & machine learning
+numpy>=2.0
+pandas>=2.2
+scikit-learn>=1.5
+
+# PostgreSQL driver (used when POSTGRES_DB is set; SQLite is the fallback for development)
+psycopg[binary]>=3.2
+
+# IoT: MQTT bridge (python manage.py mqtt_bridge)
+paho-mqtt>=2.1
+
+# Optional: gradient boosting candidate model. Install separately if wanted:
+#   pip install xgboost

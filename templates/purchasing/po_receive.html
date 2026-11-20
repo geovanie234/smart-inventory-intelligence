@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block breadcrumbs %}<div class="small"><a href="{% url 'purchasing:po_list' %}">Purchase orders</a> / <a href="{{ order.get_absolute_url }}">{{ order.reference }}</a> /</div>{% endblock %}
+{% block content %}
+<form method="post" class="card">{% csrf_token %}
+  <div class="table-responsive"><table class="table align-middle">
+    <thead><tr><th>Product</th><th class="num">Ordered</th><th class="num">Already received</th><th style="width:140px">Receiving now</th><th style="width:170px">Expiry date</th><th style="width:150px">Batch / lot</th></tr></thead>
+    <tbody>
+    {% for i in items %}
+      <tr><td>{{ i.product.name }}<div class="small text-muted mono">{{ i.product.sku }}</div></td><td class="num">{{ i.quantity_ordered|qty }}</td><td class="num">{{ i.quantity_received|qty }}</td>
+        <td><input type="number" step="any" min="0" name="qty_{{ i.pk }}" value="{% if i.outstanding %}{{ i.outstanding|floatformat:'-3' }}{% endif %}" class="form-control form-control-sm text-end" aria-label="Quantity received for {{ i.product.name }}"></td>
+        <td>{% if i.product.track_expiry %}<input type="date" name="expiry_{{ i.pk }}" class="form-control form-control-sm" aria-label="Expiry date">{% else %}<span class="text-muted small">Not tracked</span>{% endif %}</td>
+        <td>{% if i.product.track_expiry %}<input name="batch_{{ i.pk }}" class="form-control form-control-sm" maxlength="60" aria-label="Batch number">{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  <div class="card-body border-top d-flex justify-content-between align-items-center">
+    <span class="small text-muted">Quantities are posted to the stock ledger as “Goods received”. Over-receipts above 10% are rejected.</span>
+    <button class="btn btn-primary"><i class="bi bi-box-arrow-in-down me-1"></i>Post receipt</button>
+  </div>
+</form>
+{% endblock %}

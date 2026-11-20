@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="d-grid" style="min-height:100vh;place-items:center">
+  <div class="card" style="max-width:460px">
+    <div class="card-body p-4 text-center">
+      <i class="bi bi-building-exclamation" style="font-size:2.2rem;color:var(--sis-muted)"></i>
+      <h1 class="h5 fw-bold mt-2">No business assigned</h1>
+      <p class="text-muted">Your account ({{ request.user.username }}) is not linked to an active business. Ask your system administrator to assign you, or create a business in the admin site.</p>
+      <div class="d-flex justify-content-center gap-2">
+        {% if request.user.is_superuser %}<a class="btn btn-primary" href="{% url 'admin:accounts_business_add' %}">Create a business</a>{% endif %}
+        <form method="post" action="{% url 'accounts:logout' %}">{% csrf_token %}<button class="btn btn-light">Sign out</button></form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

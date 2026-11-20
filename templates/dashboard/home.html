@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% block actions %}
+  {% if request.user.is_manager or request.user.role == 'purchasing' %}
+  <form method="post" action="{% url 'intelligence:run' %}">{% csrf_token %}<input type="hidden" name="next" value="/">
+    <button class="btn btn-light" title="Retrain forecasts and refresh alerts"><i class="bi bi-arrow-repeat me-1"></i>Refresh forecasts</button>
+  </form>
+  {% endif %}
+  <a class="btn btn-primary" href="{% url 'sales:sale_create' %}"><i class="bi bi-plus-lg me-1"></i>New sale</a>
+{% endblock %}
+{% block content %}
+{% with cur=current_business.currency %}
+<div class="row g-3 mb-3">
+  <div class="col-sm-6 col-xl">
+    <div class="card kpi">
+      <div class="kpi-label"><span class="kpi-icon"><i class="bi bi-cash-stack"></i></span>Revenue · last 30 days</div>
+      <div class="kpi-value"><span class="kpi-unit">{{ cur }}</span>{{ k.revenue_30d|floatformat:0|intcomma }}</div>
+      <div class="kpi-foot">{% if k.revenue_change_pct is not None %}<span class="{% if k.revenue_change_pct >= 0 %}delta-up{% else %}delta-down{% endif %}"><i class="bi bi-arrow-{% if k.revenue_change_pct >= 0 %}up{% else %}down{% endif %}-short"></i>{{ k.revenue_change_pct|pct }}</span> vs previous 30 days{% else %}{{ k.sales_30d|intcomma }} sales{% endif %}</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-xl">
+    <div class="card kpi">
+      <div class="kpi-label"><span class="kpi-icon"><i class="bi bi-box-seam"></i></span>Stock value (at cost)</div>
+      <div class="kpi-value"><span class="kpi-unit">{{ cur }}</span>{{ k.stock_value|floatformat:0|intcomma }}</div>
+      <div class="kpi-foot">{{ k.active_products }} active products</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-xl">
+    <a class="card kpi d-block text-reset text-decoration-none" href="{% url 'inventory:product_list' %}?risk=critical">
+      <div class="kpi-label"><span class="kpi-icon"><i class="bi bi-exclamation-triangle"></i></span>Products at risk</div>
+      <div class="kpi-value">{{ k.at_risk }}</div>
+      <div class="kpi-foot">{{ k.out_of_stock }} out of stock · {{ k.overstock }} overstocked</div>
+    </a>
+  </div>
+  <div class="col-sm-6 col-xl">
+    <a class="card kpi d-block text-reset text-decoration-none" href="{% url 'intelligence:alerts' %}">
+      <div class="kpi-label"><span class="kpi-icon"><i class="bi bi-bell"></i></span>Open alerts</div>
+      <div class="kpi-value">{{ k.open_alerts }}</div>
+      <div class="kpi-foot">{{ k.critical_alerts }} critical</div>
+    </a>
+  </div>
+  <div class="col-sm-6 col-xl">
+    <a class="card kpi d-block text-reset text-decoration-none" href="{% url 'intelligence:recommendations' %}">
+      <div class="kpi-label"><span class="kpi-icon"><i class="bi bi-cart-check"></i></span>Reorder suggestions</div>
+      <div class="kpi-value">{{ k.pending_recommendations }}</div>
+      <div class="kpi-foot">{{ k.awaiting_approval }} PO awaiting approval · {{ k.open_orders }} on order</div>
+    </a>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-xl-8">
+    <div class="card h-100">
+      <div class="card-header">
+        <div><h2>Units sold and forecast demand</h2><div class="card-sub">All products · last 60 days and next {{ run.horizon_days|default:14 }} days</div></div>
+        <div class="legend">
+          <span><span class="swatch" style="background:var(--series-1)"></span>Actual</span>
+          <span><span class="swatch" style="background:var(--series-2)"></span>Forecast</span>
+          <span><span class="swatch band" style="background:var(--series-2)"></span>80% interval</span>
+        </div>
+      </div>
+      <div class="card-body">
+        {% if run %}<div class="chart-wrap"><canvas id="demandChart" aria-label="Units sold and forecast demand"></canvas></div>
+        {% else %}<div class="empty"><i class="bi bi-graph-up"></i>No forecast yet. Run forecasting once some sales history is recorded.</div>{% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-xl-4">
+    <div class="card h-100">
+      <div class="card-header"><div><h2>Stock health</h2><div class="card-sub">Products by AI risk status</div></div></div>
+      <div class="card-body"><div class="chart-wrap sm"><canvas id="riskChart" aria-label="Products by stock risk"></canvas></div>
+        <div class="small text-muted mt-2">Status compares stock on hand with forecast demand, supplier lead time and the review period.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-xl-6">
+    <div class="card h-100">
+      <div class="card-header"><div><h2>Top products by revenue</h2><div class="card-sub">Last 30 days</div></div><a class="small" href="{% url 'sales:report' %}">Sales report →</a></div>
+      <div class="card-body"><div class="chart-wrap"><canvas id="topChart" aria-label="Top products by revenue"></canvas></div></div>
+    </div>
+  </div>
+  <div class="col-xl-6">
+    <div class="card h-100">
+      <div class="card-header"><h2>Latest alerts</h2><a class="small" href="{% url 'intelligence:alerts' %}">All alerts →</a></div>
+      {% for a in alerts %}
+      <div class="alert-item">
+        <div class="alert-icon sev-{{ a.severity }}"><i class="bi {{ a.icon }}"></i></div>
+        <div class="flex-grow-1 min-w-0">
+          <div class="alert-title text-truncate">{{ a.title }}</div>
+          <div class="small text-muted text-truncate">{{ a.message }}</div>
+          <div class="alert-meta">{{ a.get_alert_type_display }} · {{ a.created_at|naturaltime }}</div>
+        </div>
+      </div>
+      {% empty %}<div class="empty"><i class="bi bi-check2-circle"></i>No open alerts.</div>{% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-xl-7">
+    <div class="card h-100">
+      <div class="card-header"><h2>Reorder now</h2><a class="small" href="{% url 'intelligence:recommendations' %}">Review all →</a></div>
+      <div class="table-responsive">
+        <table class="table table-hover">
+          <thead><tr><th>Product</th><th>Status</th><th class="num">On hand</th><th class="num">Days of cover</th><th class="num">Suggested</th></tr></thead>
+          <tbody>
+          {% for r in recommendations %}
+            <tr>
+              <td><a href="{{ r.product.get_absolute_url }}">{{ r.product.name }}</a></td>
+              <td><span class="risk risk-{{ r.risk_level }}">{{ r.get_risk_level_display }}</span></td>
+              <td class="num">{{ r.current_stock|qty }}</td>
+              <td class="num">{{ r.days_of_cover|num }}</td>
+              <td class="num fw-semibold">{{ r.recommended_quantity|qty }}</td>
+            </tr>
+          {% empty %}<tr><td colspan="5"><div class="empty"><i class="bi bi-cart-check"></i>No reorder suggestions pending.</div></td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="col-xl-5">
+    <div class="card h-100">
+      <div class="card-header"><h2>Recent sales</h2><a class="small" href="{% url 'sales:sale_list' %}">All sales →</a></div>
+      <div class="table-responsive">
+        <table class="table table-hover">
+          <tbody>
+          {% for s in recent_sales %}
+            <tr>
+              <td><a href="{{ s.get_absolute_url }}" class="mono">{{ s.reference }}</a><div class="small text-muted">{{ s.sold_at|date:"d M, H:i" }} · {{ s.get_payment_method_display }}</div></td>
+              <td class="num fw-semibold">{{ s.total_amount|money:cur }}{% if s.status == 'voided' %}<div><span class="badge text-bg-secondary">Voided</span></div>{% endif %}</td>
+            </tr>
+          {% empty %}<tr><td><div class="empty">No sales yet.</div></td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% if run %}<p class="small text-muted mt-3 mb-0"><i class="bi bi-info-circle me-1"></i>Forecasts from run #{{ run.pk }} ({{ run.finished_at|naturaltime }}).{% if run.summary.improvement_pct is not None %} Holdout WAPE {{ run.summary.selected_wape|pct }} vs baseline {{ run.summary.baseline_wape|pct }}.{% endif %} <a href="{% url 'intelligence:evaluation' %}">How accurate are they?</a></p>{% endif %}
+{% endwith %}
+{% endblock %}
+{% block scripts %}
+{% include "common/chartjs.html" %}
+{{ series|json_script:"series-data" }}{{ risk_chart|json_script:"risk-data" }}{{ top_chart|json_script:"top-data" }}
+<script>
+  (function () {
+    const read = (id) => JSON.parse(document.getElementById(id).textContent);
+    const series = read("series-data"), risk = read("risk-data"), top = read("top-data");
+    const riskColor = { out: "--status-critical", critical: "--status-serious", low: "--status-warning", ok: "--status-good", overstock: "--series-1", unknown: "--status-neutral" };
+    SIS.historyForecastChart(document.getElementById("demandChart"), {
+      history: series.history.map((p) => ({ x: p.x, y: p.units })), forecast: series.forecast,
+    }, { historyLabel: "Units sold", unit: "units" });
+    SIS.barChart(document.getElementById("riskChart"), risk, { label: "Products", colors: risk.map((r) => riskColor[r.key]) });
+    SIS.barChart(document.getElementById("topChart"), top, { label: "Revenue", money: true });
+  })();
+</script>
+{% endblock %}

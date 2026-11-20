@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block actions %}
+<a class="btn btn-light" href="{% querystring export='csv' page=None %}"><i class="bi bi-download me-1"></i>Export lines CSV</a>
+<a class="btn btn-primary" href="{% url 'sales:sale_create' %}"><i class="bi bi-plus-lg me-1"></i>New sale</a>
+{% endblock %}
+{% block content %}
+<div class="row g-3 mb-3">
+  <div class="col-sm-6 col-xl-3"><div class="card kpi"><div class="kpi-label">Revenue in period</div><div class="kpi-value">{{ period_total|money:current_business.currency }}</div><div class="kpi-foot">{{ start|date:"d M" }} – {{ end|date:"d M Y" }}</div></div></div>
+  <div class="col-sm-6 col-xl-3"><div class="card kpi"><div class="kpi-label">Completed sales</div><div class="kpi-value">{{ period_count|intcomma }}</div><div class="kpi-foot">Excludes voided</div></div></div>
+</div>
+<div class="card">
+  <div class="card-header">
+    <form class="filter-bar" method="get">
+      <input type="date" name="from" value="{{ start|date:'Y-m-d' }}" class="form-control" aria-label="From">
+      <input type="date" name="to" value="{{ end|date:'Y-m-d' }}" class="form-control" aria-label="To">
+      <input type="search" name="q" value="{{ request.GET.q }}" class="form-control" placeholder="Reference or customer">
+      <button class="btn btn-light"><i class="bi bi-funnel"></i> Filter</button>
+    </form>
+  </div>
+  <div class="table-responsive"><table class="table table-hover">
+    <thead><tr><th>Reference</th><th>Date</th><th>Cashier</th><th>Payment</th><th class="num">Items</th><th class="num">Total</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for s in sales %}
+      <tr><td><a class="mono" href="{{ s.get_absolute_url }}">{{ s.reference }}</a></td><td>{{ s.sold_at|date:"d M Y, H:i" }}</td><td>{{ s.cashier|default:"—" }}</td><td>{{ s.get_payment_method_display }}</td>
+        <td class="num">{{ s.n_items }}</td><td class="num fw-semibold">{{ s.total_amount|money:current_business.currency }}</td>
+        <td>{% if s.status == 'voided' %}<span class="risk risk-unknown">Voided</span>{% else %}<span class="risk risk-ok">Completed</span>{% endif %}</td></tr>
+    {% empty %}<tr><td colspan="7"><div class="empty"><i class="bi bi-receipt"></i>No sales in this period.</div></td></tr>{% endfor %}
+    </tbody></table></div>
+  {% include "common/pagination.html" %}
+</div>
+{% endblock %}

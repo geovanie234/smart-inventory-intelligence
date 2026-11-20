@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block actions %}
+{% if request.user.is_manager or request.user.role == 'purchasing' %}
+<form method="post" action="{% url 'intelligence:run' %}">{% csrf_token %}
+  <button class="btn btn-primary" onclick="this.disabled=true;this.innerHTML='<span class=\'spinner-border spinner-border-sm me-1\'></span>Training models…';this.form.submit()"><i class="bi bi-arrow-repeat me-1"></i>Run forecasting now</button>
+</form>
+{% endif %}
+{% endblock %}
+{% block content %}
+{% if not run %}
+<div class="card"><div class="empty"><i class="bi bi-graph-up-arrow"></i>No forecast has been run yet. Record sales for a few weeks, then click <strong>Run forecasting now</strong> (or schedule <code>python manage.py run_intelligence</code> daily).</div></div>
+{% else %}
+<div class="row g-3 mb-3">
+  <div class="col-sm-6 col-xl-3"><div class="card kpi"><div class="kpi-label">Last run</div><div class="kpi-value fs-4">{{ run.finished_at|naturaltime }}</div><div class="kpi-foot">#{{ run.pk }} · {{ run.duration_seconds|num }}s · history to {{ run.history_end|date:"d M Y" }}</div></div></div>
+  <div class="col-sm-6 col-xl-3"><div class="card kpi"><div class="kpi-label">Products modelled</div><div class="kpi-value">{{ run.products_forecast }}</div><div class="kpi-foot">{{ run.products_insufficient }} with limited history (moving average)</div></div></div>
+  <div class="col-sm-6 col-xl-3"><div class="card kpi"><div class="kpi-label">Holdout WAPE (selected)</div><div class="kpi-value">{{ run.summary.selected_wape|pct }}</div><div class="kpi-foot">Baseline {{ run.summary.baseline_wape|pct }}</div></div></div>
+  <div class="col-sm-6 col-xl-3"><div class="card kpi"><div class="kpi-label">Improvement vs baseline</div><div class="kpi-value {% if run.summary.improvement_pct > 0 %}delta-up{% endif %}">{{ run.summary.improvement_pct|pct }}</div><div class="kpi-foot">Horizon {{ run.horizon_days }} days · holdout {{ run.holdout_days }} days</div></div></div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-xl-7">
+    <div class="card h-100">
+      <div class="card-header"><div><h2>Model comparison</h2><div class="card-sub">All products pooled · last {{ run.holdout_days }} days held out · in-stock days only</div></div></div>
+      <div class="table-responsive"><table class="table">
+        <thead><tr><th>Model</th><th class="num">MAE</th><th class="num">WAPE</th><th class="num">Bias</th><th class="num">vs baseline</th></tr></thead>
+        <tbody>
+        {% for m in comparison %}
+          <tr class="{% if m.is_selected %}fw-semibold{% endif %}"><td>{{ m.model }}{% if m.is_baseline %} <span class="badge text-bg-light border">baseline</span>{% endif %}{% if m.is_selected %} <span class="risk risk-ok">used</span>{% endif %}</td>
+            <td class="num">{{ m.mae|num:2 }}</td><td class="num">{{ m.wape|pct }}</td><td class="num">{{ m.bias|num:2 }}</td>
+            <td class="num {% if m.improvement > 0 %}delta-up{% elif m.improvement < 0 %}delta-down{% endif %}">{% if m.is_baseline %}—{% else %}{{ m.improvement|pct }}{% endif %}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+    </div>
+  </div>
+  <div class="col-xl-5">
+    <div class="card h-100"><div class="card-header"><h2>How forecasting works</h2></div>
+      <div class="card-body small text-muted">
+        <ol class="explain">
+          <li>Daily sales per product are built with zero-sales days included. Days that started or ended out of stock are <strong>excluded</strong>, because sales then understate true demand.</li>
+          <li>Each candidate model is trained on history up to {{ run.holdout_days }} days ago and scored on the following {{ run.holdout_days }} days it has never seen (no future data leaks into training).</li>
+          <li>The model with the lowest WAPE is chosen per product (ties go to the simpler model) and retrained on all history.</li>
+          <li>Features: weekday, payday period, Rwandan public holidays, season, trend and recent demand level.</li>
+          <li>Forecast intervals (80%) come from each model's holdout errors and feed the safety-stock calculation.</li>
+        </ol>
+        {% if run.summary.synthetic_data %}<div class="alert alert-warning py-2 mb-0 mt-2">These results are from synthetic data. They test the pipeline but say nothing about accuracy in a real shop.</div>{% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header"><div><h2>Per-product forecasts</h2><div class="card-sub">Sorted by days of stock cover (on hand), lowest first · status also counts stock already on order</div></div></div>
+  <div class="table-responsive"><table class="table table-hover">
+    <thead><tr><th>Product</th><th>Model used</th><th class="num">Holdout WAPE</th><th class="num">Forecast / day</th><th class="num">Next 7 days</th><th class="num">On hand</th><th class="num">On order</th><th class="num">Days of cover</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr><td><a href="{{ r.product.get_absolute_url }}">{{ r.product.name }}</a></td><td class="small">{{ r.model }}</td><td class="num">{{ r.wape|pct }}</td>
+        <td class="num">{{ r.product.forecast_daily_demand|qty:1 }}</td><td class="num">{{ r.next7|qty:0 }}</td><td class="num">{{ r.product.stock_on_hand|qty }}</td><td class="num">{% if r.on_order %}{{ r.on_order|qty }}{% else %}<span class="text-muted">—</span>{% endif %}</td><td class="num">{{ r.cover|num }}</td>
+        <td><span class="risk risk-{{ r.product.stock_risk }}">{{ r.product.get_stock_risk_display }}</span></td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+
+<div class="card"><div class="card-header"><h2>Run history</h2></div>
+  <div class="table-responsive"><table class="table"><thead><tr><th>Run</th><th>Started</th><th>Status</th><th class="num">Products</th><th class="num">Selected WAPE</th><th class="num">Baseline WAPE</th><th>By</th></tr></thead><tbody>
+  {% for r in runs %}<tr><td>#{{ r.pk }}</td><td>{{ r.started_at|date:"d M Y, H:i" }}</td><td>{% if r.status == 'success' %}<span class="risk risk-ok">{{ r.get_status_display }}</span>{% elif r.status == 'failed' %}<span class="risk risk-out" title="{{ r.error }}">{{ r.get_status_display }}</span>{% else %}<span class="risk risk-unknown">{{ r.get_status_display }}</span>{% endif %}</td>
+    <td class="num">{{ r.products_forecast }}</td><td class="num">{{ r.summary.selected_wape|pct }}</td><td class="num">{{ r.summary.baseline_wape|pct }}</td><td>{{ r.triggered_by|default:"scheduled" }}</td></tr>{% endfor %}
+  </tbody></table></div>
+</div>
+{% endif %}
+{% endblock %}

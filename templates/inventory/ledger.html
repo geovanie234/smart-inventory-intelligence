@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block actions %}<a class="btn btn-light" href="{% querystring export='csv' page=None %}"><i class="bi bi-download me-1"></i>Export CSV</a>{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="card-header"><form class="filter-bar" method="get">{{ filter_form.product }}{{ filter_form.txn_type }}{{ filter_form.date_from }}{{ filter_form.date_to }}<button class="btn btn-light"><i class="bi bi-funnel"></i> Filter</button></form></div>
+  <div class="table-responsive"><table class="table table-hover">
+    <thead><tr><th>When</th><th>Product</th><th>Type</th><th class="num">Quantity</th><th class="num">Balance after</th><th>Reference</th><th>Notes</th><th>By</th></tr></thead>
+    <tbody>
+    {% for t in transactions %}
+      <tr><td class="text-nowrap">{{ t.occurred_at|date:"d M Y, H:i" }}</td><td><a href="{{ t.product.get_absolute_url }}">{{ t.product.name }}</a></td><td>{{ t.get_txn_type_display }}</td>
+        <td class="num {% if t.quantity > 0 %}delta-up{% else %}delta-down{% endif %}">{% if t.quantity > 0 %}+{% endif %}{{ t.quantity|qty }}</td><td class="num">{{ t.balance_after|qty }}</td>
+        <td class="mono small">{{ t.reference }}</td><td class="small text-muted">{{ t.notes|truncatechars:60 }}</td><td class="small">{{ t.created_by|default:"" }}</td></tr>
+    {% empty %}<tr><td colspan="8"><div class="empty"><i class="bi bi-journal-text"></i>No movements match these filters.</div></td></tr>{% endfor %}
+    </tbody></table></div>
+  {% include "common/pagination.html" %}
+</div>
+<p class="small text-muted mt-2"><i class="bi bi-shield-check me-1"></i>The ledger is append-only. Corrections are recorded as new movements (adjustments or count corrections), never by editing history.</p>
+{% endblock %}

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block actions %}<button class="btn btn-light" onclick="window.print()"><i class="bi bi-printer me-1"></i>Print report</button>{% endblock %}
+{% block content %}
+{% if current_business.is_demo %}<div class="alert alert-warning py-2"><i class="bi bi-exclamation-triangle me-1"></i>This business uses <strong>synthetic data</strong>. These figures validate the evaluation method and pipeline only; real performance must be measured in a pilot.</div>{% endif %}
+
+<div class="row g-3 mb-3">
+  <div class="col-sm-6 col-xl-3"><div class="card kpi"><div class="kpi-label">Forecast WAPE · holdout</div><div class="kpi-value">{{ run.summary.selected_wape|pct }}</div><div class="kpi-foot">Baseline {{ run.summary.baseline_wape|pct }}</div></div></div>
+  <div class="col-sm-6 col-xl-3"><div class="card kpi"><div class="kpi-label">Forecast WAPE · realised</div><div class="kpi-value">{% if realised.n %}{{ realised.wape|pct }}{% else %}—{% endif %}</div><div class="kpi-foot">{% if realised.n %}{{ realised.n }} product-days, MAE {{ realised.mae|num:2 }}{% else %}Needs forecasts older than a day{% endif %}</div></div></div>
+  <div class="col-sm-6 col-xl-3"><div class="card kpi"><div class="kpi-label">Stockout alert recall</div><div class="kpi-value">{{ alerts.recall|pct:0 }}</div><div class="kpi-foot">{{ alerts.stockouts_detected }} of {{ alerts.stockouts }} stockouts warned in advance{% if alerts.avg_warning_days %} · {{ alerts.avg_warning_days|num }} days ahead{% endif %}</div></div></div>
+  <div class="col-sm-6 col-xl-3"><div class="card kpi"><div class="kpi-label">Stock record accuracy</div><div class="kpi-value">{% if stock.n %}{{ stock.accuracy|pct:0 }}{% else %}—{% endif %}</div><div class="kpi-foot">{% if stock.n %}{{ stock.n }} counts within ±{{ stock.tolerance_pct|num:0 }}% · mean |variance| {{ stock.mean_abs_variance_pct|pct }}{% else %}No physical counts yet{% endif %}</div></div></div>
+</div>
+
+<div class="row g-3">
+  <div class="col-xl-6">
+    <div class="card h-100"><div class="card-header"><div><h2>1 · Forecast error vs baseline</h2><div class="card-sub">Time-based holdout of run #{{ run.pk|default:"—" }}</div></div></div>
+      <div class="table-responsive"><table class="table"><thead><tr><th>Model</th><th class="num">MAE</th><th class="num">WAPE</th><th class="num">vs baseline</th></tr></thead><tbody>
+      {% for m in comparison %}<tr><td>{{ m.model }}{% if m.is_baseline %} <span class="badge text-bg-light border">baseline</span>{% endif %}</td><td class="num">{{ m.mae|num:2 }}</td><td class="num">{{ m.wape|pct }}</td><td class="num">{% if m.is_baseline %}—{% else %}{{ m.improvement|pct }}{% endif %}</td></tr>
+      {% empty %}<tr><td colspan="4"><div class="empty">Run forecasting first.</div></td></tr>{% endfor %}
+      </tbody></table></div>
+      <div class="card-body small text-muted border-top">MAE = mean absolute error in units/day. WAPE = Σ|actual − forecast| ÷ Σ actual. Only in-stock days are scored. “Realised” accuracy compares stored forecasts with sales that actually happened afterwards — the honest live measure.</div>
+    </div>
+  </div>
+  <div class="col-xl-6">
+    <div class="card h-100"><div class="card-header"><div><h2>2 · Alert precision</h2><div class="card-sub">From staff feedback on alerts · last 90 days</div></div></div>
+      <div class="table-responsive"><table class="table"><thead><tr><th>Alert type</th><th class="num">Raised</th><th class="num">Reviewed</th><th class="num">Precision</th></tr></thead><tbody>
+      {% for p in alerts.precision %}<tr><td>{{ p.type }}</td><td class="num">{{ p.total }}</td><td class="num">{{ p.reviewed }}</td><td class="num">{{ p.precision|pct:0 }}</td></tr>
+      {% empty %}<tr><td colspan="4"><div class="empty">No alerts yet.</div></td></tr>{% endfor %}
+      </tbody></table></div>
+      <div class="card-body small text-muted border-top">Precision = alerts marked “correct / useful” ÷ alerts reviewed. Rate alerts on the Alerts page. Recall is measured automatically: every time a product’s stock reached zero, did a stockout-risk alert precede it within 14 days?</div>
+    </div>
+  </div>
+</div>
+<div class="card mt-3"><div class="card-body small text-muted">
+  <strong>Also report in the pilot write-up</strong> (proposal §13): time taken to record transactions and prepare reports, system response time and reliability, and structured feedback from pilot users. Record the evaluation period, product coverage and data limitations alongside these figures.
+</div></div>
+{% endblock %}
